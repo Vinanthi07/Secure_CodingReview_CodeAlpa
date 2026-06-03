@@ -1,0 +1,43 @@
+Security Review Report
+Project: Flask Web Application — Vulnerable vs Secure
+Scope: vulnerable_app.py vs secure_app.py
+Tool: Bandit (static analysis) + Manual code review
+Date: June 2026
+
+1. Executive Summary
+The vulnerable application contains five high-severity security flaws across its login, search, and ping features. Each flaw has been remediated in secure_app.py. This report documents the root cause, exploitability, and fix for each vulnerability.
+
+2. Vulnerability Summary Table
+#VulnerabilitySeverityLocation (vulnerable)CWE1SQL InjectionHigh/login, /searchCWE-892Cross-Site Scripting (XSS)High/search templateCWE-793Hardcoded CredentialsHighModule-level constantsCWE-7984Weak Password ValidationMedium/login POST handlerCWE-5215Command InjectionCritical/ping POST handlerCWE-78
+
+3. Detailed Findings
+3.1 SQL Injection (CWE-89)
+FieldDetailVulnerable codef"SELECT * FROM users WHERE username='{username}' AND password='{password}'"ExploitLogin bypass: username = ' OR '1'='1' --ImpactFull database read/write; authentication bypassFixParameterised queries: c.execute("SELECT * FROM users WHERE username=?", (username,))Bandit ruleB608 — hardcoded SQL expressions
+
+3.2 Cross-Site Scripting — XSS (CWE-79)
+FieldDetailVulnerable code{{ q | safe }} in Jinja2 templateExploit?q=<script>alert(document.cookie)</script>ImpactSession hijacking, credential theft, UI redressFixRemove | safe; Jinja2 auto-escaping active by defaultBandit ruleB701 — Jinja2 autoescape disabled / `
+
+3.3 Hardcoded Credentials (CWE-798)
+FieldDetailVulnerable codeADMIN_PASS = "admin123" and app.secret_key = "supersecret123"ExploitCredentials visible in source control; secret key forges session cookiesImpactFull admin takeover; session forgery for any userFixLoad from environment variables (os.environ.get); store passwords as bcrypt hashesBandit ruleB105, B106 — hardcoded password strings
+
+3.4 Weak Password Validation (CWE-521)
+FieldDetailVulnerable codeif len(password) < 3: — only length ≥ 3 requiredExploitBrute-force trivial; passwords like abc acceptedImpactAccount takeover via brute force or credential stuffingFixEnforce min 10 chars, uppercase, digit, and special character via validate_password()Bandit ruleN/A (logic flaw — detected by manual review)
+
+3.5 Command Injection (CWE-78)
+FieldDetailVulnerable codesubprocess.check_output(f"ping -c 1 {host}", shell=True)Exploithost = 127.0.0.1; cat /etc/passwdImpactArbitrary OS command execution; full server compromiseFixWhitelist-validate host with regex ^[a-zA-Z0-9.\-]{1,253}$; use shell=False with args listBandit ruleB602 — subprocess with shell=True
+
+4. Bandit Static Analysis Summary
+Run command: bandit -r vulnerable_app.py
+Bandit IDSeverityIssueLine (approx.)B105HighHardcoded secret key13B106HighHardcoded password constant14–15B608HighSQL injection via string format52, 67B602Criticalsubprocess shell=True75B701MediumJinja2 | safe bypasses autoescape38
+secure_app.py returns 0 issues from Bandit.
+
+5. Fix Comparison
+VulnerabilityVulnerable PatternSecure PatternSQL Injectionf"SELECT ... '{username}'""SELECT ... WHERE username=?", (username,)XSS{{ q | safe }}{{ q }} (auto-escaped)Hardcoded CredsADMIN_PASS = "admin123"os.environ.get("ADMIN_PASSWORD") + bcryptWeak Passwordlen(password) < 3Regex: 10+ chars, upper, digit, specialCommand Injectionshell=True, f-string hostWhitelist regex + shell=False + args list
+
+6. Recommendations
+
+Always use parameterised queries — never concatenate SQL strings.
+Never use | safe with user-supplied input in Jinja2.
+Store secrets in environment variables or a secrets manager (e.g., HashiCorp Vault).
+Enforce NIST SP 800-63B password guidelines (min 8 chars recommended; project uses 10+).
+Never pass user input to shell=True subprocesses; prefer shell=False + allow-list.
