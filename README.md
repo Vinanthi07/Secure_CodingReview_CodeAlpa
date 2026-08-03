@@ -1,4 +1,4 @@
-# Secure_CodingReview_CodeAlpa
+# Secure_CodingReview
 Flask Security Demo — Vulnerable vs Secure
 A minimal Flask app pair for cybersecurity interns to explore and fix 5 common web vulnerabilities.
 Files
